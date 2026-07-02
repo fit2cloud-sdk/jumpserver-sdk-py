@@ -17,8 +17,8 @@ from jumpserver.models.asset_extras import (
     ZoneRequest,
 )
 from jumpserver.models.user import User
-from jumpserver.services import BaseService
-from jumpserver.utils import build_url, format_path
+from jumpserver.services import BaseService, _from_dict
+from jumpserver.utils import format_path
 
 __all__ = [
     "AssetsService",
@@ -122,7 +122,12 @@ class NodesService(BaseService):
         if limit is not None:
             params["limit"] = limit
         data, resp = self._client.get(path, params=params)
-        items = [_from_dict(NodeTreeItem, item) for item in ((data or {}).get("results", []) if isinstance(data, dict) else (data or []))]
+        items = [
+            _from_dict(NodeTreeItem, item)
+            for item in (
+                (data or {}).get("results", []) if isinstance(data, dict) else (data or [])
+            )
+        ]
         return items, resp
 
     def create_child(self, parent_id: str, value: str) -> tuple[Optional[Node], Response]:
@@ -210,19 +215,3 @@ class GatewaysService(BaseService):
 
     def delete(self, id: str) -> Response:
         return self._delete(id)
-
-
-def _from_dict(cls, data):
-    import dataclasses
-
-    if not dataclasses.is_dataclass(cls):
-        return data
-    field_names = {f.name for f in dataclasses.fields(cls)}
-    kwargs = {}
-    for key, value in data.items():
-        snake = key.replace(" ", "_").replace("-", "_")
-        if snake in field_names:
-            kwargs[snake] = value
-        elif key in field_names:
-            kwargs[key] = value
-    return cls(**kwargs)

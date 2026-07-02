@@ -15,6 +15,7 @@ env/
 # IDE
 .idea/
 .vscode/
+.zed/
 *.swp
 *.swo
 
@@ -29,3 +30,8 @@ htmlcov/
 
 # Distribution
 *.egg
+
+# AI cache
+.qoder
+.cloade
+.codex

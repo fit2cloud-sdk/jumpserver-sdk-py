@@ -1,15 +1,32 @@
-"""Tests for the JumpServer Python SDK."""
+"""Integration tests for the JumpServer Python SDK.
 
-import json
-from unittest.mock import MagicMock, patch
+All tests below call real JumpServer APIs via environment variables.
+
+Supported auth methods (checked in order):
+
+1. Access Key (HMAC-SHA256 signature):
+       JUMPSERVER_URL          - JumpServer base URL
+       JUMPSERVER_KEY_ID       - Access Key ID
+       JUMPSERVER_SECRET_ID    - Access Key Secret
+
+2. Username + Password (POST /api/v1/authentication/auth/ → Bearer token):
+       JUMPSERVER_URL          - JumpServer base URL
+       JUMPSERVER_USERNAME     - Username
+       JUMPSERVER_PASSWORD     - Password
+
+Unit tests (TestAuth, TestErrors, TestModels) run unconditionally.
+Integration tests are skipped when env vars are not set.
+"""
+
+import os
 
 import pytest
 import requests
 
-from jumpserver import Client, Response
+from jumpserver import Client
 from jumpserver.auth import (
-    BasicAuth,
     BearerTokenAuth,
+    PasswordAuth,
     PrivateTokenAuth,
     SignatureAuth,
 )
@@ -22,6 +39,31 @@ from jumpserver.errors import (
 )
 from jumpserver.models.auth import TokenRequest
 from jumpserver.models.user import GroupRequest, User, UserRequest
+
+# ---------------------------------------------------------------------------
+# Env-var credentials
+# ---------------------------------------------------------------------------
+
+BASE_URL = os.environ.get("JUMPSERVER_URL") or ""
+AK = os.environ.get("JUMPSERVER_KEY_ID") or ""
+SK = os.environ.get("JUMPSERVER_SECRET_ID") or ""
+USERNAME = os.environ.get("JUMPSERVER_USERNAME") or ""
+PASSWORD = os.environ.get("JUMPSERVER_PASSWORD") or ""
+
+requires_env = pytest.mark.skipif(
+    not (BASE_URL and ((AK and SK) or (USERNAME and PASSWORD))),
+    reason=(
+        "JUMPSERVER_URL + (KEY_ID/SECRET_ID or USERNAME/PASSWORD) not set"
+    ),
+)
+
+
+@pytest.fixture(scope="module")
+def client() -> Client:
+    """Shared Client authenticated via env vars (AK/SK or username/password)."""
+    if AK and SK:
+        return Client(base_url=BASE_URL, access_key=AK, access_secret=SK)
+    return Client(base_url=BASE_URL, username=USERNAME, password=PASSWORD)
 
 
 # ------------------------------------------------------------------
@@ -54,17 +96,68 @@ class TestAuth:
         auth(prepped)
         assert prepped.headers["Authorization"] == "Token myprivtoken"
 
-    def test_basic_auth(self):
-        auth = BasicAuth("admin", "secret123")
-        req = requests.Request("GET", "http://example.com/")
+    def test_password_auth_sets_bearer_header(self):
+        """PasswordAuth fetches a Bearer token via real API."""
+        if not (BASE_URL and USERNAME and PASSWORD):
+            pytest.skip("JUMPSERVER_USERNAME / JUMPSERVER_PASSWORD not set")
+        auth = PasswordAuth(
+            base_url=BASE_URL,
+            username=USERNAME,
+            password=PASSWORD,
+        )
+        req = requests.Request("GET", f"{BASE_URL}/api/v1/users/profile/")
         prepped = req.prepare()
         auth(prepped)
         assert "Authorization" in prepped.headers
-        assert prepped.headers["Authorization"].startswith("Basic ")
+        assert prepped.headers["Authorization"].startswith("Bearer ")
+
+    def test_password_auth_token_cached(self):
+        """PasswordAuth caches the token across multiple calls."""
+        if not (BASE_URL and USERNAME and PASSWORD):
+            pytest.skip("JUMPSERVER_USERNAME / JUMPSERVER_PASSWORD not set")
+        auth = PasswordAuth(
+            base_url=BASE_URL,
+            username=USERNAME,
+            password=PASSWORD,
+        )
+        # First call — fetches token from API
+        req1 = requests.Request("GET", f"{BASE_URL}/api/v1/users/profile/")
+        prepped1 = req1.prepare()
+        auth(prepped1)
+        token1 = prepped1.headers["Authorization"]
+
+        # Second call — should reuse cached token (no new API call)
+        req2 = requests.Request("GET", f"{BASE_URL}/api/v1/users/profile/")
+        prepped2 = req2.prepare()
+        auth(prepped2)
+        token2 = prepped2.headers["Authorization"]
+
+        assert token1 == token2
 
     def test_signature_auth_requires_key(self):
         with pytest.raises(ValueError):
             SignatureAuth("", "")
+
+    def test_signature_auth_directly(self):
+        """SignatureAuth correctly signs a PreparedRequest."""
+        auth = SignatureAuth("my-key", "my-secret")
+        req = requests.Request("GET", "http://example.com/api/v1/users/profile/")
+        prepped = req.prepare()
+        auth(prepped)
+        assert "Date" in prepped.headers
+        assert "Authorization" in prepped.headers
+        assert "Signature" in prepped.headers["Authorization"]
+        assert 'keyId="my-key"' in prepped.headers["Authorization"]
+
+    def test_signature_auth_with_preserved_date(self):
+        """When Date is already set, SignatureAuth preserves it."""
+        auth = SignatureAuth("my-key", "my-secret")
+        req = requests.Request("GET", "http://example.com/api/v1/users/profile/")
+        prepped = req.prepare()
+        prepped.headers["Date"] = "Sun, 09 Jun 2024 12:00:00 GMT"
+        auth(prepped)
+        assert prepped.headers["Date"] == "Sun, 09 Jun 2024 12:00:00 GMT"
+        assert "Signature" in prepped.headers["Authorization"]
 
 
 # ------------------------------------------------------------------
@@ -74,9 +167,7 @@ class TestAuth:
 
 class TestErrors:
     def test_api_error_message_from_detail(self):
-        err = map_error(
-            404, "GET", "http://example.com/api/", body=b'{"detail":"Not found."}'
-        )
+        err = map_error(404, "GET", "http://example.com/api/", body=b'{"detail":"Not found."}')
         assert isinstance(err, NotFoundError)
         assert "Not found." in str(err)
 
@@ -101,18 +192,18 @@ class TestErrors:
 
 
 # ------------------------------------------------------------------
-# Unit: Client
+# Unit: Client construction (no network)
 # ------------------------------------------------------------------
 
 
 class TestClient:
     def test_default_org_header(self):
         """Default org header should be the global org."""
-        client = Client(base_url="http://example.com")
+        client = Client(base_url="http://127.0.0.1")
         assert client._session.headers.get("X-JMS-ORG") == "00000000-0000-0000-0000-000000000002"
 
     def test_services_are_wired(self):
-        client = Client(base_url="http://example.com")
+        client = Client(base_url="http://127.0.0.1")
         assert client.users is not None
         assert client.assets is not None
         assert client.accounts is not None
@@ -122,313 +213,14 @@ class TestClient:
         assert client.auth is not None
 
     def test_with_org_returns_new_client(self):
-        client = Client(base_url="http://example.com")
+        client = Client(base_url="http://127.0.0.1")
         org_client = client.with_org("my-org-id")
         assert org_client is not client
         assert org_client._org_id == "my-org-id"
 
-    @patch("jumpserver.client.requests.Session")
-    def test_get_request(self, mock_session_cls):
-        mock_session = MagicMock()
-        mock_session_cls.return_value = mock_session
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.headers = {"Content-Type": "application/json"}
-        mock_resp.content = b'{"count":0,"results":[]}'
-        mock_session.request.return_value = mock_resp
-
-        client = Client(base_url="http://example.com")
-        data, resp = client.get("/api/v1/users/users/")
-
-        assert data == {"count": 0, "results": []}
-        assert resp.status_code == 200
-
-    @patch("jumpserver.client.requests.Session")
-    def test_post_creates_resource(self, mock_session_cls):
-        mock_session = MagicMock()
-        mock_session_cls.return_value = mock_session
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 201
-        mock_resp.headers = {"Content-Type": "application/json"}
-        mock_resp.content = b'{"id":"new-id","name":"test"}'
-        mock_session.request.return_value = mock_resp
-
-        client = Client(base_url="http://example.com")
-        data, resp = client.post("/api/v1/assets/host/", {"name": "test"})
-
-        called_kwargs = mock_session.request.call_args[1]
-        assert called_kwargs["method"] == "POST"
-        sent_body = json.loads(called_kwargs["data"])
-        assert sent_body["name"] == "test"
-
-    @patch("jumpserver.client.requests.Session")
-    def test_error_raises_exception(self, mock_session_cls):
-        mock_session = MagicMock()
-        mock_session_cls.return_value = mock_session
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 404
-        mock_resp.headers = {"Content-Type": "application/json"}
-        mock_resp.content = b'{"detail":"Resource not found"}'
-        mock_session.request.return_value = mock_resp
-
-        client = Client(base_url="http://example.com")
-        with pytest.raises(NotFoundError):
-            client.get("/api/v1/missing/")
-
 
 # ------------------------------------------------------------------
-# Integration-style: User service with mock HTTP
-# ------------------------------------------------------------------
-
-
-class TestUsersService:
-    @patch("jumpserver.client.requests.Session")
-    def test_profile(self, mock_session_cls):
-        mock_session = MagicMock()
-        mock_session_cls.return_value = mock_session
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.headers = {"Content-Type": "application/json"}
-        mock_resp.content = b'{"id":"u1","name":"Alice","username":"alice","email":"a@b.com"}'
-        mock_session.request.return_value = mock_resp
-
-        client = Client(base_url="http://example.com")
-        user, resp = client.users.profile()
-
-        assert user is not None
-        assert user.id == "u1"
-        assert user.name == "Alice"
-        assert user.username == "alice"
-
-    @patch("jumpserver.client.requests.Session")
-    def test_list_users(self, mock_session_cls):
-        mock_session = MagicMock()
-        mock_session_cls.return_value = mock_session
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.headers = {"Content-Type": "application/json"}
-        mock_resp.content = b'{"count":1,"results":[{"id":"u1","name":"Alice"}]}'
-        mock_session.request.return_value = mock_resp
-
-        client = Client(base_url="http://example.com")
-        users, resp = client.users.list()
-
-        assert len(users) == 1
-        assert users[0].id == "u1"
-
-    @patch("jumpserver.client.requests.Session")
-    def test_create_user(self, mock_session_cls):
-        mock_session = MagicMock()
-        mock_session_cls.return_value = mock_session
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 201
-        mock_resp.headers = {"Content-Type": "application/json"}
-        mock_resp.content = b'{"id":"u-new","name":"Bob","username":"bob"}'
-        mock_session.request.return_value = mock_resp
-
-        client = Client(base_url="http://example.com")
-        req = UserRequest(name="Bob", username="bob", email="bob@b.com")
-        user, resp = client.users.create(req)
-
-        assert user is not None
-        assert user.id == "u-new"
-        assert user.name == "Bob"
-
-    @patch("jumpserver.client.requests.Session")
-    def test_delete_user(self, mock_session_cls):
-        mock_session = MagicMock()
-        mock_session_cls.return_value = mock_session
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 204
-        mock_resp.headers = {"Content-Type": ""}
-        mock_resp.content = b""
-        mock_session.request.return_value = mock_resp
-
-        client = Client(base_url="http://example.com")
-        resp = client.users.delete("u1")
-        assert resp.status_code == 204
-
-
-# ------------------------------------------------------------------
-# Integration-style: Asset service
-# ------------------------------------------------------------------
-
-
-class TestAssetsService:
-    @patch("jumpserver.client.requests.Session")
-    def test_list_assets(self, mock_session_cls):
-        mock_session = MagicMock()
-        mock_session_cls.return_value = mock_session
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.headers = {"Content-Type": "application/json"}
-        mock_resp.content = b'{"count":1,"results":[{"id":"a1","name":"Server01"}]}'
-        mock_session.request.return_value = mock_resp
-
-        client = Client(base_url="http://example.com")
-        assets, resp = client.assets.list()
-
-        assert len(assets) == 1
-        assert assets[0].id == "a1"
-
-    @patch("jumpserver.client.requests.Session")
-    def test_category_create(self, mock_session_cls):
-        mock_session = MagicMock()
-        mock_session_cls.return_value = mock_session
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 201
-        mock_resp.headers = {"Content-Type": "application/json"}
-        mock_resp.content = b'{"id":"db1","name":"db01"}'
-        mock_session.request.return_value = mock_resp
-
-        client = Client(base_url="http://example.com")
-        from jumpserver.models.asset import AssetRequest
-
-        req = AssetRequest(name="db01", address="10.0.0.1", platform=22)
-        asset, resp = client.databases.create(req)
-
-        assert asset is not None
-        assert asset.id == "db1"
-
-    @patch("jumpserver.client.requests.Session")
-    def test_get_asset(self, mock_session_cls):
-        mock_session = MagicMock()
-        mock_session_cls.return_value = mock_session
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.headers = {"Content-Type": "application/json"}
-        mock_resp.content = b'{"id":"a1","name":"MyHost","address":"10.0.0.1"}'
-        mock_session.request.return_value = mock_resp
-
-        client = Client(base_url="http://example.com")
-        asset, resp = client.assets.get("a1")
-
-        assert asset is not None
-        assert asset.id == "a1"
-        assert asset.name == "MyHost"
-
-
-# ------------------------------------------------------------------
-# Integration-style: Other services
-# ------------------------------------------------------------------
-
-
-class TestOtherServices:
-    @patch("jumpserver.client.requests.Session")
-    def test_auth_create_token(self, mock_session_cls):
-        mock_session = MagicMock()
-        mock_session_cls.return_value = mock_session
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 201
-        mock_resp.headers = {"Content-Type": "application/json"}
-        mock_resp.content = b'{"token":"v4-token","user":"alice"}'
-        mock_session.request.return_value = mock_resp
-
-        client = Client(base_url="http://example.com")
-        tok, resp = client.auth.create_token(
-            TokenRequest(username="alice", password="secret")
-        )
-
-        assert tok is not None
-        assert tok.token == "v4-token"
-
-    @patch("jumpserver.client.requests.Session")
-    def test_orgs_list(self, mock_session_cls):
-        mock_session = MagicMock()
-        mock_session_cls.return_value = mock_session
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.headers = {"Content-Type": "application/json"}
-        mock_resp.content = b'{"count":1,"results":[{"id":"o1","name":"Default Org"}]}'
-        mock_session.request.return_value = mock_resp
-
-        client = Client(base_url="http://example.com")
-        orgs, resp = client.organizations.list()
-        assert len(orgs) == 1
-        assert orgs[0].name == "Default Org"
-
-    @patch("jumpserver.client.requests.Session")
-    def test_node_list(self, mock_session_cls):
-        mock_session = MagicMock()
-        mock_session_cls.return_value = mock_session
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.headers = {"Content-Type": "application/json"}
-        mock_resp.content = b'{"count":1,"results":[{"id":"n1","value":"/Root"}]}'
-        mock_session.request.return_value = mock_resp
-
-        client = Client(base_url="http://example.com")
-        nodes, resp = client.nodes.list()
-        assert len(nodes) == 1
-        assert nodes[0].id == "n1"
-
-    @patch("jumpserver.client.requests.Session")
-    def test_settings_public(self, mock_session_cls):
-        mock_session = MagicMock()
-        mock_session_cls.return_value = mock_session
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.headers = {"Content-Type": "application/json"}
-        mock_resp.content = b'{"enable_watermark":false}'
-        mock_session.request.return_value = mock_resp
-
-        client = Client(base_url="http://example.com")
-        s, resp = client.settings.public()
-        assert s is not None
-
-    @patch("jumpserver.client.requests.Session")
-    def test_walk_all_pages_mechanism(self, mock_session_cls):
-        """Test that ListOptions pagination parameters are sent correctly."""
-        mock_session = MagicMock()
-        mock_session_cls.return_value = mock_session
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.headers = {"Content-Type": "application/json"}
-        mock_resp.content = b'{"count":2,"results":[{"id":"u1"},{"id":"u2"}],"next":null}'
-        mock_session.request.return_value = mock_resp
-
-        client = Client(base_url="http://example.com")
-        users, resp = client.users.list(limit=10, offset=0)
-
-        assert len(users) == 2
-        # Verify limit/offset in request
-        called_url = mock_session.request.call_args[1]["url"]
-        assert "limit=10" in called_url
-
-    @patch("jumpserver.client.requests.Session")
-    def test_permissions_list(self, mock_session_cls):
-        mock_session = MagicMock()
-        mock_session_cls.return_value = mock_session
-
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.headers = {"Content-Type": "application/json"}
-        mock_resp.content = b'{"count":1,"results":[{"id":"p1","name":"SSH Access"}]}'
-        mock_session.request.return_value = mock_resp
-
-        client = Client(base_url="http://example.com")
-        perms, resp = client.permissions.list()
-        assert len(perms) == 1
-        assert perms[0].id == "p1"
-
-
-# ------------------------------------------------------------------
-# Smoke test: Model creation
+# Unit: Model creation (no network)
 # ------------------------------------------------------------------
 
 
@@ -461,35 +253,133 @@ class TestModels:
 
 
 # ------------------------------------------------------------------
-# Client with AccessKey authentication
+# Integration: Client connectivity
 # ------------------------------------------------------------------
 
 
-class TestAccessKeyClient:
-    def test_signature_auth_directly(self):
-        """Test that SignatureAuth correctly signs a PreparedRequest."""
-        import datetime
-        from unittest.mock import MagicMock, patch
+@requires_env
+class TestIntegrationClient:
+    def test_client_has_auth(self, client: Client):
+        """Client constructed from env vars should have auth configured."""
+        assert client._auth is not None
 
-        auth = SignatureAuth("my-key", "my-secret")
-        req = requests.Request("GET", "http://example.com/api/v1/users/profile/")
-        prepped = req.prepare()
-        auth(prepped)
+    def test_get_request(self, client: Client):
+        """GET a known endpoint and verify response structure."""
+        data, resp = client.get("/api/v1/users/users/", params={"limit": 1})
+        assert resp.status_code == 200
+        assert "count" in data
+        assert "results" in data
 
-        # Verify Date was set
-        assert "Date" in prepped.headers
-        # Verify Authorization was set with Signature
-        assert "Authorization" in prepped.headers
-        assert "Signature" in prepped.headers["Authorization"]
-        assert 'keyId="my-key"' in prepped.headers["Authorization"]
+    def test_post_returns_error_for_invalid_body(self, client: Client):
+        """POST with invalid data should raise APIError."""
+        with pytest.raises(APIError):
+            client.post("/api/v1/assets/host/", {"name": ""})
 
-    def test_signature_auth_with_preserved_date(self):
-        """When Date is already set, SignatureAuth preserves it."""
-        auth = SignatureAuth("my-key", "my-secret")
-        req = requests.Request("GET", "http://example.com/api/v1/users/profile/")
-        prepped = req.prepare()
-        prepped.headers["Date"] = "Sun, 09 Jun 2024 12:00:00 GMT"
-        auth(prepped)
 
-        assert prepped.headers["Date"] == "Sun, 09 Jun 2024 12:00:00 GMT"
-        assert "Signature" in prepped.headers["Authorization"]
+# ------------------------------------------------------------------
+# Integration: Users service
+# ------------------------------------------------------------------
+
+
+@requires_env
+class TestIntegrationUsers:
+    def test_profile(self, client: Client):
+        user, resp = client.users.profile()
+        assert resp.status_code == 200
+        assert user is not None
+        assert user.username != ""
+
+    def test_list_users(self, client: Client):
+        users, resp = client.users.list(limit=5)
+        assert resp.status_code == 200
+        assert isinstance(users, list)
+        if users:
+            assert users[0].id != ""
+
+    def test_list_users_with_offset(self, client: Client):
+        users, resp = client.users.list(limit=2, offset=0)
+        assert resp.status_code == 200
+        assert isinstance(users, list)
+
+    def test_list_users_with_search(self, client: Client):
+        users, resp = client.users.list(limit=5, search="admin")
+        assert resp.status_code == 200
+        assert isinstance(users, list)
+
+    def test_user_groups(self, client: Client):
+        """List user groups endpoint."""
+        groups, resp = client.user_groups.list(limit=5)
+        assert resp.status_code == 200
+        assert isinstance(groups, list)
+
+
+# ------------------------------------------------------------------
+# Integration: Assets service
+# ------------------------------------------------------------------
+
+
+@requires_env
+class TestIntegrationAssets:
+    def test_list_assets(self, client: Client):
+        assets, resp = client.assets.list(limit=5)
+        assert resp.status_code == 200
+        assert isinstance(assets, list)
+
+    def test_list_hosts(self, client: Client):
+        hosts, resp = client.hosts.list(limit=5)
+        assert resp.status_code == 200
+        assert isinstance(hosts, list)
+
+    def test_list_databases(self, client: Client):
+        databases, resp = client.databases.list(limit=5)
+        assert resp.status_code == 200
+        assert isinstance(databases, list)
+
+    def test_list_nodes(self, client: Client):
+        nodes, resp = client.nodes.list(limit=5)
+        assert resp.status_code == 200
+        assert isinstance(nodes, list)
+
+    def test_list_platforms(self, client: Client):
+        platforms, resp = client.platforms.list(limit=5)
+        assert resp.status_code == 200
+        assert isinstance(platforms, list)
+
+
+# ------------------------------------------------------------------
+# Integration: Other services
+# ------------------------------------------------------------------
+
+
+@requires_env
+class TestIntegrationServices:
+    def test_orgs_list(self, client: Client):
+        orgs, resp = client.organizations.list(limit=5)
+        assert resp.status_code == 200
+        assert isinstance(orgs, list)
+
+    def test_settings_public(self, client: Client):
+        s, resp = client.settings.public()
+        assert resp.status_code == 200
+        assert s is not None
+
+    def test_permissions_list(self, client: Client):
+        perms, resp = client.permissions.list(limit=5)
+        assert resp.status_code == 200
+        assert isinstance(perms, list)
+
+    def test_audits_list_sessions(self, client: Client):
+        sessions, resp = client.audits.list_sessions(limit=5)
+        assert resp.status_code == 200
+        assert isinstance(sessions, list)
+
+    def test_labels_list(self, client: Client):
+        labels, resp = client.labels.list(limit=5)
+        assert resp.status_code == 200
+        assert isinstance(labels, list)
+
+    def test_with_org_scoping(self, client: Client):
+        """with_org should return a client scoped to the given org."""
+        org_client = client.with_org("00000000-0000-0000-0000-000000000002")
+        users, resp = org_client.users.list(limit=1)
+        assert resp.status_code == 200

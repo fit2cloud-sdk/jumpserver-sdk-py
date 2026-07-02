@@ -1,6 +1,6 @@
 """JumpServer SDK - Custom exceptions."""
 
-from typing import Any, Optional
+from typing import Optional
 
 
 class JumpServerError(Exception):
@@ -31,7 +31,9 @@ class APIError(JumpServerError):
         if self.message:
             return f"jumpserver: {self.method} {self.url} -> {self.status_code}: {self.message}"
         if self.body and len(self.body) < 256:
-            return f"jumpserver: {self.method} {self.url} -> {self.status_code}: {self.body.decode()}"
+            return (
+                f"jumpserver: {self.method} {self.url} -> {self.status_code}: {self.body.decode()}"
+            )
         return f"jumpserver: {self.method} {self.url} -> {self.status_code}"
 
 

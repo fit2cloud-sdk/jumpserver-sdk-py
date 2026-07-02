@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
-from jumpserver.client import Client, Response
 from jumpserver.models.account import (
     Account,
     AccountBackupPlan,
@@ -18,7 +15,7 @@ from jumpserver.models.account import (
     ChangeSecretAutomation,
     ChangeSecretAutomationRequest,
 )
-from jumpserver.services import BaseService
+from jumpserver.services import BaseService, _from_dict
 from jumpserver.utils import format_path
 
 __all__ = ["AccountsService", "TemplatesService", "ChangeSecretService", "BackupService"]
@@ -69,10 +66,10 @@ class AccountsService(BaseService):
 
 
 class TemplatesService(BaseService):
-    """CRUD for /api/v1/accounts/templates/."""
+    """CRUD for /api/v1/accounts/account-templates/."""
 
-    list_url = "/api/v1/accounts/templates/"
-    detail_url = "/api/v1/accounts/templates/%s/"
+    list_url = "/api/v1/accounts/account-templates/"
+    detail_url = "/api/v1/accounts/account-templates/%s/"
 
     def list(self, limit=None, offset=None, search=None):
         return self._list(AccountTemplate, limit=limit, offset=offset, search=search)
@@ -113,10 +110,10 @@ class ChangeSecretService(BaseService):
 
 
 class BackupService(BaseService):
-    """CRUD for /api/v1/accounts/backup-plans/."""
+    """CRUD for /api/v1/accounts/account-backup-plans/."""
 
-    list_url = "/api/v1/accounts/backup-plans/"
-    detail_url = "/api/v1/accounts/backup-plans/%s/"
+    list_url = "/api/v1/accounts/account-backup-plans/"
+    detail_url = "/api/v1/accounts/account-backup-plans/%s/"
 
     def list(self, limit=None, offset=None, search=None):
         return self._list(AccountBackupPlan, limit=limit, offset=offset, search=search)
@@ -132,19 +129,3 @@ class BackupService(BaseService):
 
     def delete(self, id: str):
         return self._delete(id)
-
-
-def _from_dict(cls, data):
-    import dataclasses
-
-    if not dataclasses.is_dataclass(cls):
-        return data
-    field_names = {f.name for f in dataclasses.fields(cls)}
-    kwargs = {}
-    for key, value in data.items():
-        snake = key.replace(" ", "_").replace("-", "_")
-        if snake in field_names:
-            kwargs[snake] = value
-        elif key in field_names:
-            kwargs[key] = value
-    return cls(**kwargs)

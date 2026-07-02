@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from jumpserver.client import Client, Response
+from jumpserver.client import Response
 from jumpserver.models.user import Group, GroupRequest, User, UserRequest
-from jumpserver.services import BaseService
+from jumpserver.services import BaseService, _from_dict
 from jumpserver.utils import format_path
 
 __all__ = ["UsersService", "GroupsService"]
@@ -92,19 +92,3 @@ class GroupsService(BaseService):
 
     def delete(self, id: str) -> Response:
         return self._delete(id)
-
-
-def _from_dict(cls, data):
-    import dataclasses
-
-    if not dataclasses.is_dataclass(cls):
-        return data
-    field_names = {f.name for f in dataclasses.fields(cls)}
-    kwargs = {}
-    for key, value in data.items():
-        snake = key.replace(" ", "_").replace("-", "_")
-        if snake in field_names:
-            kwargs[snake] = value
-        elif key in field_names:
-            kwargs[key] = value
-    return cls(**kwargs)

@@ -1,8 +1,5 @@
 """Labels service."""
 
-from typing import Optional
-
-from jumpserver.client import Client, Response
 from jumpserver.models.acl import Label, LabelRequest
 from jumpserver.services import BaseService
 

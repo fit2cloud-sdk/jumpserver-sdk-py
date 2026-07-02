@@ -16,7 +16,7 @@ from urllib.parse import urljoin
 import requests
 
 from . import auth as authmod
-from .errors import APIError, map_error
+from .errors import map_error
 
 T = TypeVar("T")
 
@@ -108,7 +108,7 @@ class Client:
         )
         self._timeout = timeout
         self._max_retries = max_retries
-        self._user_agent = user_agent or f"jumpserver-sdk-py/0.1.0"
+        self._user_agent = user_agent or "jumpserver-sdk-py/0.1.0"
         self._debug = debug
         self._org_id = org_id
 
@@ -131,34 +131,44 @@ class Client:
         if access_key and access_secret:
             return authmod.SignatureAuth(access_key, access_secret)
         if username and password:
-            return authmod.BasicAuth(username, password)
+            return authmod.PasswordAuth(
+                base_url=self.base_url,
+                username=username,
+                password=password,
+                verify_ssl=self._session.verify,
+            )
         if token:
             return authmod.PrivateTokenAuth(token)
         return None
 
     def _init_services(self) -> None:
         """Lazy-import and wire all service objects."""
-        from .services.users import UsersService, GroupsService
+        from .services.accounts import (
+            AccountsService,
+            BackupService,
+            ChangeSecretService,
+            TemplatesService,
+        )
+        from .services.acls import CommandFiltersService, LoginACLsService
         from .services.assets import (
             AssetsService,
             CategoryService,
+            GatewaysService,
             NodesService,
             PlatformsService,
             ZonesService,
-            GatewaysService,
         )
-        from .services.accounts import AccountsService, TemplatesService, ChangeSecretService, BackupService
-        from .services.auth import AuthService
         from .services.audits import AuditsService
-        from .services.terminal import TerminalService
-        from .services.tickets import TicketsService
+        from .services.auth import AuthService
+        from .services.labels import LabelsService
+        from .services.ops import OpsService
         from .services.orgs import OrgsService
         from .services.perms import PermsService, SelfService
-        from .services.settings import SettingsService
         from .services.rbac import RBACService
-        from .services.labels import LabelsService
-        from .services.acls import CommandFiltersService, LoginACLsService
-        from .services.ops import OpsService
+        from .services.settings import SettingsService
+        from .services.terminal import TerminalService
+        from .services.tickets import TicketsService
+        from .services.users import GroupsService, UsersService
         from .services.xpack import XpackService
 
         self.auth = AuthService(self)
@@ -166,12 +176,12 @@ class Client:
         self.user_groups = GroupsService(self)
         self.roles = RBACService(self)
         self.assets = AssetsService(self)
-        self.hosts = CategoryService(self, "host")
-        self.devices = CategoryService(self, "device")
-        self.databases = CategoryService(self, "database")
-        self.webs = CategoryService(self, "web")
-        self.clouds = CategoryService(self, "cloud")
-        self.customs = CategoryService(self, "custom")
+        self.hosts = CategoryService(self, "hosts")
+        self.devices = CategoryService(self, "devices")
+        self.databases = CategoryService(self, "databases")
+        self.webs = CategoryService(self, "webs")
+        self.clouds = CategoryService(self, "clouds")
+        self.customs = CategoryService(self, "customs")
         self.nodes = NodesService(self)
         self.platforms = PlatformsService(self)
         self.zones = ZonesService(self)
@@ -237,15 +247,16 @@ class Client:
         resp = self._do_with_retry(lambda: self._session.request(**kwargs))
         return self._handle_response(resp, method, path)
 
-    def _send_prepared(self, prepped: requests.PreparedRequest, method: str, path: str, send_kwargs: dict) -> tuple[Any, Response]:
+    def _send_prepared(
+        self, prepped: requests.PreparedRequest, method: str, path: str, send_kwargs: dict
+    ) -> tuple[Any, Response]:
         resp = self._do_with_retry(lambda: self._session.send(prepped, **send_kwargs))
         return self._handle_response(resp, method, path)
 
-    def _do_with_retry(
-        self, do_call: Callable[[], requests.Response]
-    ) -> requests.Response:
+    def _do_with_retry(self, do_call: Callable[[], requests.Response]) -> requests.Response:
         """Execute *do_call* with exponential backoff retry."""
         last_exc: Optional[Exception] = None
+        reauth_done = False
         for attempt in range(self._max_retries + 1):
             try:
                 resp = do_call()
@@ -256,6 +267,15 @@ class Client:
                     self._sleep(attempt, None)
                     continue
                 raise
+
+            # 401 auto-refresh: when using PasswordAuth, invalidate the
+            # cached token and retry once without counting it as a retry.
+            if resp.status_code == 401 and not reauth_done:
+                if isinstance(self._auth, authmod.PasswordAuth):
+                    _LOGGER.debug("Got 401, invalidating PasswordAuth token")
+                    self._auth.invalidate()
+                    reauth_done = True
+                    continue
 
             if not self._is_retryable(resp.status_code):
                 return resp
@@ -290,7 +310,7 @@ class Client:
                 return
             except ValueError:
                 pass
-        wait = min(0.5 * (2 ** attempt), 15)
+        wait = min(0.5 * (2**attempt), 15)
         jitter = random.uniform(wait / 2, wait)
         time.sleep(jitter)
 
@@ -322,7 +342,9 @@ class Client:
 
         if resp.status_code >= 400:
             raise map_error(
-                resp.status_code, method, resp.url,
+                resp.status_code,
+                method,
+                resp.url,
                 body=body_bytes,
             )
 
@@ -399,6 +421,7 @@ def _append_query(path: str, params: Optional[dict]) -> str:
     if not filtered:
         return path
     from urllib.parse import urlencode
+
     qs = urlencode(filtered, doseq=True)
     if "?" in path:
         return f"{path}&{qs}"

@@ -1,6 +1,11 @@
+[![EN](https://img.shields.io/badge/EN-English-blue)](README.md)
+[![CN](https://img.shields.io/badge/CN-中文-red)](README_CN.md)
+
 # JumpServer Python SDK
 
-Python SDK for the [JumpServer](https://github.com/jumpserver/jumpserver) API.
+Python SDK for the [JumpServer](https://github.com/jumpserver/jumpserver) API, compatible with **v4.10.x**.
+
+[English](README.md) | [中文文档](README_CN.md)
 
 ## Installation
 

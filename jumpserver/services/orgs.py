@@ -1,8 +1,5 @@
 """Organizations service."""
 
-from typing import Optional
-
-from jumpserver.client import Client, Response
 from jumpserver.models.org import Organization, OrganizationRequest
 from jumpserver.services import BaseService
 

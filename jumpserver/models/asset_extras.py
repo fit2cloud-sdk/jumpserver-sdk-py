@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional
 
-from . import IDName, LabelValue, NamePort, PlatformMini
+from . import IDName, NamePort, PlatformMini
 
 
 @dataclass

@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any
-
-from jumpserver.client import Client, Response
 from jumpserver.models.permission import (
-    AssetPermission,
-    AssetPermissionRequest,
     AssetPermAssetRelation,
     AssetPermAssetRelationDetail,
+    AssetPermission,
+    AssetPermissionRequest,
     AssetPermNodeRelation,
     AssetPermNodeRelationDetail,
     AssetPermUserGroupRelation,
@@ -19,7 +16,7 @@ from jumpserver.models.permission import (
     SelfAsset,
     SelfAssetDetail,
 )
-from jumpserver.services import BaseService
+from jumpserver.services import BaseService, _from_dict
 
 __all__ = ["PermsService", "SelfService"]
 
@@ -46,9 +43,7 @@ class PermsService(BaseService):
         return self._delete(id)
 
     def add_users_relations(self, reqs: list[AssetPermUserRelation]):
-        data, resp = self._client.post(
-            "/api/v1/perms/asset-permissions-users-relations/", reqs
-        )
+        data, resp = self._client.post("/api/v1/perms/asset-permissions-users-relations/", reqs)
         items = [_from_dict(AssetPermUserRelationDetail, item) for item in (data or [])]
         return items, resp
 
@@ -56,40 +51,28 @@ class PermsService(BaseService):
         data, resp = self._client.post(
             "/api/v1/perms/asset-permissions-user-groups-relations/", reqs
         )
-        items = [
-            _from_dict(AssetPermUserGroupRelationDetail, item) for item in (data or [])
-        ]
+        items = [_from_dict(AssetPermUserGroupRelationDetail, item) for item in (data or [])]
         return items, resp
 
     def add_assets_relations(self, reqs: list[AssetPermAssetRelation]):
-        data, resp = self._client.post(
-            "/api/v1/perms/asset-permissions-assets-relations/", reqs
-        )
-        items = [
-            _from_dict(AssetPermAssetRelationDetail, item) for item in (data or [])
-        ]
+        data, resp = self._client.post("/api/v1/perms/asset-permissions-assets-relations/", reqs)
+        items = [_from_dict(AssetPermAssetRelationDetail, item) for item in (data or [])]
         return items, resp
 
     def add_nodes_relations(self, reqs: list[AssetPermNodeRelation]):
-        data, resp = self._client.post(
-            "/api/v1/perms/asset-permissions-nodes-relations/", reqs
-        )
+        data, resp = self._client.post("/api/v1/perms/asset-permissions-nodes-relations/", reqs)
         items = [_from_dict(AssetPermNodeRelationDetail, item) for item in (data or [])]
         return items, resp
 
     def get_self_asset_accounts(self, asset_id: str):
-        data, resp = self._client.get(
-            f"/api/v1/perms/users/self/assets/{asset_id}/"
-        )
+        data, resp = self._client.get(f"/api/v1/perms/users/self/assets/{asset_id}/")
         return data or {}, resp
 
 
 class SelfService(BaseService):
     """Service for /api/v1/perms/users/self/ endpoints."""
 
-    def list_assets(
-        self, filters: dict = None, limit=None, offset=None, search=None
-    ):
+    def list_assets(self, filters: dict = None, limit=None, offset=None, search=None):
         params = {}
         if filters:
             params.update(filters)
@@ -99,30 +82,10 @@ class SelfService(BaseService):
             params["offset"] = offset
         if search:
             params["search"] = search
-        data, resp = self._client.get(
-            "/api/v1/perms/users/self/assets/", params=params
-        )
+        data, resp = self._client.get("/api/v1/perms/users/self/assets/", params=params)
         results = (data or {}).get("results", [])
         return [_from_dict(SelfAsset, item) for item in results], resp
 
     def get_asset(self, asset_id: str):
-        data, resp = self._client.get(
-            f"/api/v1/perms/users/self/assets/{asset_id}/"
-        )
+        data, resp = self._client.get(f"/api/v1/perms/users/self/assets/{asset_id}/")
         return _from_dict(SelfAssetDetail, data) if data else None, resp
-
-
-def _from_dict(cls, data):
-    import dataclasses
-
-    if not dataclasses.is_dataclass(cls):
-        return data
-    field_names = {f.name for f in dataclasses.fields(cls)}
-    kwargs = {}
-    for key, value in data.items():
-        snake = key.replace(" ", "_").replace("-", "_")
-        if snake in field_names:
-            kwargs[snake] = value
-        elif key in field_names:
-            kwargs[key] = value
-    return cls(**kwargs)

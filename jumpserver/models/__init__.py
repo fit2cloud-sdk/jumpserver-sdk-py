@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Any, Generic, List, Optional, TypeVar
+from dataclasses import dataclass
+from typing import Optional, TypeVar
 
 T = TypeVar("T")
 

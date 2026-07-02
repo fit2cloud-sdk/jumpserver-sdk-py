@@ -1,8 +1,5 @@
 """Authentication service."""
 
-from typing import Any, Optional
-
-from jumpserver.client import Client, Response
 from jumpserver.models.auth import (
     ConnectionToken,
     ConnectionTokenRequest,
@@ -10,7 +7,7 @@ from jumpserver.models.auth import (
     Token,
     TokenRequest,
 )
-from jumpserver.services import BaseService
+from jumpserver.services import BaseService, _from_dict
 from jumpserver.utils import format_path
 
 __all__ = ["AuthService"]
@@ -41,9 +38,7 @@ class AuthService(BaseService):
         return _from_dict(ConnectionToken, data) if data else None, resp
 
     def create_super_connection_token(self, req: ConnectionTokenRequest):
-        data, resp = self._client.post(
-            "/api/v1/authentication/super-connection-token/", req
-        )
+        data, resp = self._client.post("/api/v1/authentication/super-connection-token/", req)
         return _from_dict(ConnectionToken, data) if data else None, resp
 
     def get_super_connection_token_secret(self, token_id: str):
@@ -59,25 +54,7 @@ class AuthService(BaseService):
 
     def get_client_url(self, token_id: str):
         data, resp = self._client.get(
-            format_path(
-                "/api/v1/authentication/connection-token/%s/client-url/", token_id
-            )
+            format_path("/api/v1/authentication/connection-token/%s/client-url/", token_id)
         )
         url = (data or {}).get("url", "")
         return url, resp
-
-
-def _from_dict(cls, data):
-    import dataclasses
-
-    if not dataclasses.is_dataclass(cls):
-        return data
-    field_names = {f.name for f in dataclasses.fields(cls)}
-    kwargs = {}
-    for key, value in data.items():
-        snake = key.replace(" ", "_").replace("-", "_")
-        if snake in field_names:
-            kwargs[snake] = value
-        elif key in field_names:
-            kwargs[key] = value
-    return cls(**kwargs)

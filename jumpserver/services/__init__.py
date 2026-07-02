@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Generic, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Optional, TypeVar
 
-from jumpserver.utils import build_url, format_path
+from jumpserver.utils import format_path
 
 if TYPE_CHECKING:
     from jumpserver.client import Client, Response
 
 T = TypeVar("T")
-R = TypeVar("R")
 
 __all__ = ["BaseService"]
 
@@ -90,9 +89,7 @@ class BaseService:
         _, resp = self._client.delete(format_path(self.detail_url, id))
         return resp
 
-    def _action(
-        self, cls: type[T], url: str, body: Any = None
-    ) -> tuple[Optional[T], Response]:
+    def _action(self, cls: type[T], url: str, body: Any = None) -> tuple[Optional[T], Response]:
         data, resp = self._client.post(url, body)
         if data is None:
             return None, resp
@@ -110,7 +107,11 @@ def _camel_to_snake(name: str) -> str:
 
 
 def _from_dict(cls: type[T], data: dict) -> T:
-    """Convert a dict to a dataclass instance, mapping camelCase keys to snake_case fields."""
+    """Convert a dict to a dataclass instance, mapping camelCase keys to snake_case fields.
+
+    Unknown keys returned by the API that have no matching dataclass field are
+    silently ignored so forward-compatible API additions do not break the SDK.
+    """
 
     import dataclasses
 
@@ -122,25 +123,10 @@ def _from_dict(cls: type[T], data: dict) -> T:
 
     for key, value in data.items():
         snake = _camel_to_snake(key)
-        # Try direct match
         if snake in field_names:
             kwargs[snake] = value
         elif key in field_names:
             kwargs[key] = value
-        # Handle common mismatches
-        elif key == "MFA":
-            continue
-        else:
-            # If value is a dict and field expects a dataclass, recurse
-            if isinstance(value, dict):
-                # Try to find a matching field
-                for fname in field_names:
-                    if fname == snake:
-                        kwargs[snake] = value
-                        break
-                else:
-                    kwargs[snake] = value
-            else:
-                kwargs[snake] = value
+        # else: silently skip unknown keys
 
     return cls(**kwargs)

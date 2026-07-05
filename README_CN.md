@@ -10,13 +10,15 @@
 ## 功能特性
 
 - **v4 支持** — SDK 面向 JumpServer v4.x
-- **26+ 个服务模块** — 完整 CRUD：用户、资产、账号、权限、组织、工单、自服务、运维任务等
+- **完整 CRUD 服务** — 用户、资产、账号、权限、组织、工单、自服务、运维任务等
 - **分类资产** — 主机、网络设备、数据库、Web、云、自定义
 - **多种认证方式** — AccessKey (HMAC-SHA256)、密码认证 (Bearer Token)、Private Token
 - **密码认证自动缓存** — 首次请求通过用户名密码换取 Bearer Token，自动缓存并根据过期时间提前 5 分钟刷新，401 时自动重新获取
 - **组织切换** — `with_org(id)` 切换组织上下文
-- **自动分页** — 支持 `limit` / `offset` 分页参数
+- **自动分页** — 支持 `limit` / `offset` 分页参数，`limit` 默认 `10` 避免全量拉取
+- **增强错误信息** — 从 `{"field": ["msg"]}` 和嵌套序列化器中自动提取字段级错误
 - **智能重试** — 指数退避 + 随机抖动，仅重试瞬时错误 (408/429/5xx)
+- **丰富平台模型** — PlatformProtocol 协议详情（含 secret_types, port_from_addr, setting 等）
 - **类型安全** — 全量 dataclass 模型，支持 IDE 自动补全
 
 ## 环境要求
@@ -146,7 +148,7 @@ except APIError as e:
 | Web | `client.webs` | list / get / create / update / delete | Web 资产 CRUD |
 | 云资产 | `client.clouds` | list / get / create / update / delete | 云资产 CRUD |
 | 自定义 | `client.customs` | list / get / create / update / delete | 自定义资产 CRUD |
-| 节点 | `client.nodes` | list / get / create / delete / create_child / get_children | 资产树节点 CRUD + 子节点 |
+| 节点 | `client.nodes` | list / get / create / delete / create_child / get_children / get_tree | 资产树节点 CRUD + 子节点 + 树列表 |
 | 平台 | `client.platforms` | list / get | 平台模板查询 |
 | 区域 | `client.zones` | list / get / create / update / delete | 区域 CRUD |
 | 网关 | `client.gateways` | list / get / create / update / delete | 网关 CRUD |
@@ -168,14 +170,24 @@ except APIError as e:
 | 运维 | `client.ops` | run_job / get_job_result | 运维任务执行（/api/v1/ops/jobs/） |
 | Xpack | `client.xpack` | license | 许可证信息 |
 
+### 公共工具函数
+
+| 函数 | 模块 | 说明 |
+|------|------|------|
+| `from_dict` | `jumpserver` | 将 JSON 字典转换为类型化的 dataclass 实例（驼峰 ↔ 下划线） |
+| `format_path` | `jumpserver.utils` | 格式化 URL 路径模板 |
+| `map_error` | `jumpserver.errors` | 将 HTTP 状态码映射为异常 |
+| `is_not_found`, `is_unauthorized`, `is_forbidden`, `is_rate_limited` | `jumpserver.errors` | 异常类型判断 |
+
+
 ## 包结构
 
 ```
 jumpserver/
-├── models/                   # 响应 & 请求模型 (dataclass)
+├── models/                   # 响应 & 请求模型 (dataclass) — 每个文件均导出 __all__
 │   ├── user.py               #   User, UserRequest, Group, GroupRequest
 │   ├── asset.py              #   Asset, AssetRequest
-│   ├── asset_extras.py       #   Node, Platform, Zone, Gateway
+│   ├── asset_extras.py       #   Node, Platform, PlatformProtocol, Zone, Gateway
 │   ├── account.py            #   Account, AccountTemplate, ChangeSecret
 │   ├── permission.py         #   AssetPermission, SelfAsset
 │   ├── org.py                #   Organization
@@ -207,8 +219,10 @@ jumpserver/
 │   ├── BearerTokenAuth       #   Bearer Token
 │   └── PrivateTokenAuth      #   Private Token
 ├── client.py                 # Client 主客户端 + Response
+├── py.typed                  # PEP 561 类型标记（发布类型信息）
 ├── errors.py                 # APIError, NotFoundError, UnauthorizedError ...
 └── utils/                    # 工具函数
+    └── __init__.py           #   format_path
 ```
 
 ## 测试
@@ -278,7 +292,7 @@ pip install -e ".[dev]"
 pytest
 
 # 代码检查
-ruff check .
+ruff check jumpserver/ tests/
 mypy jumpserver/
 ```
 

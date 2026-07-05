@@ -3,7 +3,30 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from . import IDName, NamePort, PlatformMini
+from . import IDName, LabelValue, NamePort, PlatformMini
+
+__all__ = [
+    "Node", "NodeRequest", "NodeChildRequest", "NodeTreeItem",
+    "Platform", "PlatformProtocol",
+    "Zone", "ZoneRequest",
+    "Gateway", "GatewayRequest",
+]
+
+
+@dataclass
+class PlatformProtocol:
+    """Rich protocol binding returned by the platform API."""
+
+    id: int = 0
+    name: str = ""
+    port: int = 0
+    port_from_addr: bool = False
+    primary: bool = False
+    required: bool = False
+    default: bool = False
+    public: bool = True
+    secret_types: list[str] = field(default_factory=list)
+    setting: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -43,13 +66,13 @@ class NodeTreeItem:
 class Platform:
     id: int = 0
     name: str = ""
-    category: Any = None
-    type: Any = None
-    charset: Any = None
+    category: Optional[LabelValue] = None
+    type: Optional[LabelValue] = None
+    charset: Optional[LabelValue] = None
     internal: bool = False
     domain_enabled: bool = False
     su_enabled: bool = False
-    protocols: list[NamePort] = field(default_factory=list)
+    protocols: list[PlatformProtocol] = field(default_factory=list)
     comment: str = ""
     created_by: str = ""
     updated_by: str = ""
@@ -89,7 +112,7 @@ class Gateway:
     name: str = ""
     address: str = ""
     platform: Optional[PlatformMini] = None
-    protocols: list[NamePort] = field(default_factory=list)
+    protocols: list[PlatformProtocol] = field(default_factory=list)
     nodes: list[IDName] = field(default_factory=list)
     is_active: bool = False
     comment: str = ""
@@ -104,6 +127,7 @@ class GatewayRequest:
     name: str = ""
     address: str = ""
     platform: int = 0
+    zone: str = ""
     protocols: list[NamePort] = field(default_factory=list)
     nodes: list[str] = field(default_factory=list)
     is_active: bool = True

@@ -7,6 +7,7 @@ and use its service attributes to make API calls.
 from __future__ import annotations
 
 import copy
+import dataclasses
 import json
 import logging
 import time
@@ -430,6 +431,8 @@ def _append_query(path: str, params: Optional[dict]) -> str:
 
 def _to_dict(obj: Any) -> Any:
     """Convert a dataclass (or list/ dict of dataclasses) to a plain dict with camelCase keys."""
+    if dataclasses.is_dataclass(obj):
+        return _dataclass_to_dict(obj)
     if obj is None:
         return None
     if isinstance(obj, (str, int, float, bool)):
@@ -438,24 +441,26 @@ def _to_dict(obj: Any) -> Any:
         return {k: _to_dict(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         return [_to_dict(v) for v in obj]
-    if hasattr(obj, "__dataclass_fields__"):
-        result = {}
-        for field_name in obj.__dataclass_fields__:
-            val = getattr(obj, field_name)
-            # Skip empty / default values for cleaner payloads
-            if val is None:
-                continue
-            if isinstance(val, (list, tuple)) and len(val) == 0:
-                continue
-            if isinstance(val, str) and val == "":
-                continue
-            if isinstance(val, bool) and val is False:
-                # Keep False for is_active etc.
-                pass
-            key = _snake_to_camel(field_name)
-            result[key] = _to_dict(val)
-        return result
     return obj
+
+
+def _dataclass_to_dict(obj: Any) -> dict:
+    """Serialize a single dataclass instance to a camelCase dict.
+
+    None and empty fields are omitted so the API can apply defaults.
+    """
+    result = {}
+    for field_name in obj.__dataclass_fields__:
+        val = getattr(obj, field_name)
+        if val is None:
+            continue
+        if isinstance(val, (list, tuple)) and len(val) == 0:
+            continue
+        if isinstance(val, str) and val == "":
+            continue
+        key = _snake_to_camel(field_name)
+        result[key] = _to_dict(val)
+    return result
 
 
 def _snake_to_camel(name: str) -> str:

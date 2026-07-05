@@ -342,8 +342,14 @@ class TestIntegrationAssets:
 
     def test_list_platforms(self, client: Client):
         platforms, resp = client.platforms.list(limit=5)
+        print(f"\nplatforms: {platforms}")
         assert resp.status_code == 200
         assert isinstance(platforms, list)
+
+    def test_list_node_tree(self, client: Client):
+        nodes, resp = client.nodes.get_tree()
+        assert resp.status_code == 200
+        assert isinstance(nodes, list)
 
 
 # ------------------------------------------------------------------
@@ -383,3 +389,171 @@ class TestIntegrationServices:
         org_client = client.with_org("00000000-0000-0000-0000-000000000002")
         users, resp = org_client.users.list(limit=1)
         assert resp.status_code == 200
+
+
+@requires_env
+class TestCRUD:
+    """Test create / get / update / delete for all services.
+
+    Uses unique names per run so real data is never touched.
+    """
+
+    _uid = "9aa8911e-b507-4a4b-8e19-9f3cf93be17c"
+
+    # -- Labels ----------------------------------------------------------
+
+    def test_label_crud(self, client: Client):
+        from jumpserver.models.acl import LabelRequest
+        suffix = str(int(__import__("time").time()))
+        obj, _ = client.labels.create(LabelRequest(name=f"t-{suffix}", value="v1"))
+        assert obj.name == f"t-{suffix}"
+        updated, _ = client.labels.update(obj.id, LabelRequest(name=f"t-{suffix}", value="v2"))
+        assert updated.value == "v2"
+        client.labels.delete(obj.id)
+
+    # -- User Groups -----------------------------------------------------
+
+    def test_user_group_crud(self, client: Client):
+        from jumpserver.models.user import GroupRequest
+        suffix = str(int(__import__("time").time()))
+        obj, _ = client.user_groups.create(GroupRequest(name=f"t-{suffix}"))
+        assert obj.name == f"t-{suffix}"
+        updated, _ = client.user_groups.update(obj.id, GroupRequest(name=f"t-{suffix}-2"))
+        assert updated.name.endswith("-2")
+        client.user_groups.delete(obj.id)
+
+    # -- Zones -----------------------------------------------------------
+
+    def test_zone_crud(self, client: Client):
+        from jumpserver.models.asset_extras import ZoneRequest
+        suffix = str(int(__import__("time").time()))
+        obj, _ = client.zones.create(ZoneRequest(name=f"t-{suffix}"))
+        assert obj.name == f"t-{suffix}"
+        client.zones.delete(obj.id)
+
+    # -- Organizations ---------------------------------------------------
+
+    def test_org_crud(self, client: Client):
+        from jumpserver.models.org import OrganizationRequest
+        suffix = str(int(__import__("time").time()))
+        obj, _ = client.organizations.create(OrganizationRequest(name=f"t-{suffix}"))
+        assert obj.name == f"t-{suffix}"
+        client.organizations.delete(obj.id)
+
+    # -- Host Assets -----------------------------------------------------
+
+    def test_host_crud(self, client: Client):
+        from jumpserver.models.asset import AssetRequest, NamePort
+        suffix = str(int(__import__("time").time()))
+        obj, _ = client.hosts.create(AssetRequest(
+            name=f"t-{suffix}", address="10.0.0.1", platform=10,
+            protocols=[NamePort(name="ssh", port=22)],
+        ))
+        assert obj.name == f"t-{suffix}"
+        client.hosts.delete(obj.id)
+
+    # -- Accounts (on host asset) ----------------------------------------
+
+    def test_account_crud(self, client: Client):
+        from jumpserver.models.account import AccountRequest
+        from jumpserver.models.asset import AssetRequest, NamePort
+        suffix = str(int(__import__("time").time()))
+        asset, _ = client.hosts.create(AssetRequest(
+            name=f"t-{suffix}", address="10.0.0.1", platform=10,
+            protocols=[NamePort(name="ssh", port=22)],
+        ))
+        try:
+            obj, _ = client.accounts.create(AccountRequest(
+                name="root", username="root", asset=asset.id, secret="Sdk@2025test",
+            ))
+            assert obj.name == "root"
+            secret_data, _ = client.accounts.get_secret(obj.id)
+            assert secret_data is not None
+            client.accounts.delete(obj.id)
+        finally:
+            client.hosts.delete(asset.id)
+
+    # -- Account Templates -----------------------------------------------
+
+    def test_account_template_crud(self, client: Client):
+        from jumpserver.models.account import AccountTemplateRequest
+        suffix = str(int(__import__("time").time()))
+        obj, _ = client.account_templates.create(AccountTemplateRequest(
+            name=f"t-{suffix}", username="admin",
+        ))
+        assert obj.name == f"t-{suffix}"
+        client.account_templates.delete(obj.id)
+
+    # -- Nodes -----------------------------------------------------------
+
+    def test_node_crud(self, client: Client):
+        from jumpserver.models.asset_extras import NodeRequest
+        suffix = str(int(__import__("time").time()))
+        obj, _ = client.nodes.create(NodeRequest(value=f"t-{suffix}"))
+        assert obj.value == f"t-{suffix}"
+        children, resp = client.nodes.get_children(obj.id)
+        assert resp.status_code == 200
+        assert isinstance(children, list)
+        client.nodes.delete(obj.id)
+
+    # -- Gateways (needs zone + platform 11) -----------------------------
+
+    def test_gateway_crud(self, client: Client):
+        from jumpserver.models.asset_extras import GatewayRequest, NamePort, ZoneRequest
+        suffix = str(int(__import__("time").time()))
+        zone, _ = client.zones.create(ZoneRequest(name=f"t-{suffix}"))
+        try:
+            obj, _ = client.gateways.create(GatewayRequest(
+                name=f"t-{suffix}", address="10.0.0.1",
+                platform=11, zone=zone.id,
+                protocols=[NamePort(name="ssh", port=22)],
+            ))
+            assert obj.name == f"t-{suffix}"
+            client.gateways.delete(obj.id)
+        finally:
+            client.zones.delete(zone.id)
+
+    # -- Command Filters -------------------------------------------------
+
+    def test_command_filter_crud(self, client: Client):
+        from jumpserver.models.acl import CommandFilterRequest, CommandGroupRequest
+
+        suffix = str(int(__import__("time").time()))
+        uid = self._uid
+
+        # Create a command group (required by all filter examples)
+        cg, _ = client.command_filters.create_group(CommandGroupRequest(
+            name=f"cg-{suffix}", content="rm -rf",
+        ))
+        try:
+            # 5 real-world formats
+            examples = [
+                {"name": f"eg1-{suffix}", "action": "reject",
+                 "users": {"type": "all"}, "assets": {"type": "all"},
+                 "accounts": ["@ALL"], "command_groups": [cg.id]},
+                {"name": f"eg2-{suffix}", "action": "accept", "reviewers": [],
+                 "users": {"type": "ids", "ids": [uid]},
+                 "assets": {"type": "all"},
+                 "accounts": ["@ALL"], "command_groups": [cg.id]},
+                {"name": f"eg3-{suffix}", "action": "review",
+                 "users": {"type": "attrs", "attrs": [
+                     {"name": "groups", "match": "m2m", "value": [uid]}]},
+                 "assets": {"type": "attrs", "attrs": [
+                     {"name": "address", "match": "exact", "value": "10.0.0.1"}]},
+                 "accounts": ["@ALL"], "command_groups": [cg.id],
+                 "reviewers": [uid]},
+                {"name": f"eg4-{suffix}", "action": "warning",
+                 "users": {"type": "all"}, "assets": {"type": "all"},
+                 "accounts": ["@ALL"], "command_groups": [cg.id],
+                 "reviewers": [uid]},
+                {"name": f"eg5-{suffix}", "action": "notify_and_warn",
+                 "users": {"type": "all"}, "assets": {"type": "all"},
+                 "accounts": ["@ALL"], "command_groups": [cg.id],
+                 "reviewers": [uid]},
+            ]
+            for eg in examples:
+                obj, _ = client.command_filters.create(CommandFilterRequest(**eg))
+                assert obj.name == eg["name"]
+                client.command_filters.delete(obj.id)
+        finally:
+            client.command_filters.delete_group(cg.id)

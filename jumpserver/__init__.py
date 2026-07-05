@@ -29,10 +29,12 @@ from jumpserver.errors import (
     is_rate_limited,
     is_unauthorized,
 )
+from jumpserver.services import from_dict
 
 __all__ = [
     "Client",
     "Response",
+    "from_dict",
     "APIError",
     "BadRequestError",
     "UnauthorizedError",

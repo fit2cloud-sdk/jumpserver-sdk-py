@@ -1,22 +1,26 @@
 """Terminal registration & config service."""
+from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from jumpserver.services import BaseService
 from jumpserver.utils import format_path
 
-__all__ = ["TerminalService"]
+if TYPE_CHECKING:
+    from jumpserver.client import Response
 
+
+
+__all__ = ["TerminalService"]
 
 class TerminalService(BaseService):
     """Service for /api/v1/terminal/ endpoints (Koko, Lion, etc.)."""
-
-    def register(self, name: str, type_name: str, comment: str = ""):
+    def register(self, name: str, type_name: str, comment: str = "") -> tuple[dict, Response]:
         body = {"name": name, "type": type_name, "comment": comment}
         data, resp = self._client.post("/api/v1/terminal/terminal-registrations/", body)
         return data or {}, resp
 
-    def config(self):
+    def config(self) -> tuple[dict, Response]:
         data, resp = self._client.get("/api/v1/terminal/terminals/config/")
         return data or {}, resp
 
@@ -24,7 +28,7 @@ class TerminalService(BaseService):
         _, resp = self._client.post("/api/v1/terminal/terminals/status/", statuses)
         return resp
 
-    def connect_methods(self):
+    def connect_methods(self) -> tuple[dict, Response]:
         data, resp = self._client.get("/api/v1/terminal/components/connect-methods/")
         return data or {}, resp
 

@@ -17,7 +17,7 @@ from jumpserver.models.asset_extras import (
     ZoneRequest,
 )
 from jumpserver.models.user import User
-from jumpserver.services import BaseService, _from_dict
+from jumpserver.services import BaseService, from_dict
 from jumpserver.utils import format_path
 
 __all__ = [
@@ -56,12 +56,11 @@ class AssetsService(BaseService):
     ) -> tuple[list[User], Response]:
         path = format_path("/api/v1/assets/assets/%s/perm-users/", asset_id)
         params = {}
-        if limit is not None:
-            params["limit"] = limit
+        params["limit"] = limit if limit is not None else 10
         if offset is not None:
             params["offset"] = offset
         data, resp = self._client.get(path, params=params)
-        items = [_from_dict(User, item) for item in (data or [])]
+        items = [from_dict(User, item) for item in (data or [])]
         return items, resp
 
 
@@ -115,25 +114,39 @@ class NodesService(BaseService):
         return self._get(Node, id)
 
     def get_children(
-        self, parent_id: str, limit: Optional[int] = None
+        self, parent_id: str
     ) -> tuple[list[NodeTreeItem], Response]:
         path = format_path("/api/v1/assets/nodes/%s/children/", parent_id)
-        params = {}
-        if limit is not None:
-            params["limit"] = limit
-        data, resp = self._client.get(path, params=params)
+        data, resp = self._client.get(path)
         items = [
-            _from_dict(NodeTreeItem, item)
+            from_dict(NodeTreeItem, item)
             for item in (
                 (data or {}).get("results", []) if isinstance(data, dict) else (data or [])
             )
         ]
         return items, resp
 
+    def get_tree(
+        self, key: Optional[str] = None
+    ) -> tuple[list[NodeTreeItem], Response]:
+        """Fetch the node tree, optionally scoped to a node *key*.
+
+        ``GET /api/v1/assets/nodes/children/tree/``
+        """
+        params: dict[str, Any] = {}
+        if key is not None:
+            params["key"] = key
+        data, resp = self._client.get("/api/v1/assets/nodes/children/tree/", params=params)
+        results = (
+            (data or {}).get("results", []) if isinstance(data, dict) else (data or [])
+        )
+        items = [from_dict(NodeTreeItem, item) for item in results]
+        return items, resp
+
     def create_child(self, parent_id: str, value: str) -> tuple[Optional[Node], Response]:
         path = format_path("/api/v1/assets/nodes/%s/children/", parent_id)
         data, resp = self._client.post(path, {"value": value})
-        return _from_dict(Node, data) if data else None, resp
+        return from_dict(Node, data) if data else None, resp
 
     def create(self, req: NodeRequest) -> tuple[Optional[Node], Response]:
         return self._create(Node, req)

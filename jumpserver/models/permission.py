@@ -5,6 +5,15 @@ from typing import Any, Optional
 
 from . import IDName, LabelValue, PlatformMini
 
+__all__ = [
+    "AssetPermission", "AssetPermissionRequest",
+    "AssetPermUserRelation", "AssetPermUserRelationDetail",
+    "AssetPermUserGroupRelation", "AssetPermUserGroupRelationDetail",
+    "AssetPermAssetRelation", "AssetPermAssetRelationDetail",
+    "AssetPermNodeRelation", "AssetPermNodeRelationDetail",
+    "SelfAsset", "SelfAssetDetail",
+]
+
 
 @dataclass
 class AssetPermission:

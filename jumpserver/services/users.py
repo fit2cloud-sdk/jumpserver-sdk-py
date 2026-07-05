@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 from jumpserver.client import Response
 from jumpserver.models.user import Group, GroupRequest, User, UserRequest
-from jumpserver.services import BaseService, _from_dict
+from jumpserver.services import BaseService, from_dict
 from jumpserver.utils import format_path
 
 __all__ = ["UsersService", "GroupsService"]
@@ -33,7 +33,7 @@ class UsersService(BaseService):
 
     def profile(self) -> tuple[Optional[User], Response]:
         data, resp = self._client.get("/api/v1/users/profile/")
-        return _from_dict(User, data) if data else None, resp
+        return from_dict(User, data) if data else None, resp
 
     def create(self, req: UserRequest) -> tuple[Optional[User], Response]:
         return self._create(User, req)
@@ -57,12 +57,11 @@ class UsersService(BaseService):
     ) -> tuple[list[Group], Response]:
         path = format_path("/api/v1/users/users/%s/groups/", user_id)
         params = {}
-        if limit is not None:
-            params["limit"] = limit
+        params["limit"] = limit if limit is not None else 10
         if offset is not None:
             params["offset"] = offset
         data, resp = self._client.get(path, params=params)
-        items = [_from_dict(Group, item) for item in (data or [])]
+        items = [from_dict(Group, item) for item in (data or [])]
         return items, resp
 
 

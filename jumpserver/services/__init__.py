@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from typing import TYPE_CHECKING, Any, Optional, TypeVar
 
 from jumpserver.utils import format_path
@@ -11,7 +12,7 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 
-__all__ = ["BaseService"]
+__all__ = ["BaseService", "from_dict"]
 
 
 class BaseService:
@@ -31,7 +32,7 @@ class BaseService:
         self,
         cls: type[T],
         filters: Optional[dict[str, Any]] = None,
-        limit: Optional[int] = None,
+        limit: int = 10,
         offset: Optional[int] = None,
         search: Optional[str] = None,
         order: Optional[str] = None,
@@ -40,8 +41,7 @@ class BaseService:
         params: dict[str, Any] = {}
         if filters:
             params.update(filters)
-        if limit is not None:
-            params["limit"] = limit
+        params["limit"] = limit if limit is not None else 10
         if offset is not None:
             params["offset"] = offset
         if search:
@@ -53,7 +53,7 @@ class BaseService:
         if data is None:
             return [], resp
         results = data.get("results", [])
-        items = [_from_dict(cls, item) for item in results]
+        items = [from_dict(cls, item) for item in results]
         return items, resp
 
     def _get(self, cls: type[T], id: str) -> tuple[Optional[T], Response]:
@@ -61,28 +61,28 @@ class BaseService:
         data, resp = self._client.get(format_path(self.detail_url, id))
         if data is None:
             return None, resp
-        return _from_dict(cls, data), resp
+        return from_dict(cls, data), resp
 
     def _create(self, cls: type[T], body: Any) -> tuple[Optional[T], Response]:
         """Create a new resource and return it."""
         data, resp = self._client.post(self.list_url, body)
         if data is None:
             return None, resp
-        return _from_dict(cls, data), resp
+        return from_dict(cls, data), resp
 
     def _update(self, cls: type[T], id: str, body: Any) -> tuple[Optional[T], Response]:
         """Patch-update a resource by ID."""
         data, resp = self._client.patch(format_path(self.detail_url, id), body)
         if data is None:
             return None, resp
-        return _from_dict(cls, data), resp
+        return from_dict(cls, data), resp
 
     def _replace(self, cls: type[T], id: str, body: Any) -> tuple[Optional[T], Response]:
         """Full replace (PUT) a resource by ID."""
         data, resp = self._client.put(format_path(self.detail_url, id), body)
         if data is None:
             return None, resp
-        return _from_dict(cls, data), resp
+        return from_dict(cls, data), resp
 
     def _delete(self, id: str) -> Response:
         """Delete a resource by ID."""
@@ -93,7 +93,7 @@ class BaseService:
         data, resp = self._client.post(url, body)
         if data is None:
             return None, resp
-        return _from_dict(cls, data), resp
+        return from_dict(cls, data), resp
 
 
 def _camel_to_snake(name: str) -> str:
@@ -106,15 +106,12 @@ def _camel_to_snake(name: str) -> str:
     return "".join(result)
 
 
-def _from_dict(cls: type[T], data: dict) -> T:
+def from_dict(cls: type[T], data: dict) -> T:
     """Convert a dict to a dataclass instance, mapping camelCase keys to snake_case fields.
 
     Unknown keys returned by the API that have no matching dataclass field are
     silently ignored so forward-compatible API additions do not break the SDK.
     """
-
-    import dataclasses
-
     if not dataclasses.is_dataclass(cls):
         return data  # type: ignore
 

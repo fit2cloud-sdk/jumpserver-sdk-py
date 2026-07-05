@@ -1,4 +1,7 @@
 """Authentication service."""
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Optional
 
 from jumpserver.models.auth import (
     ConnectionToken,
@@ -7,18 +10,21 @@ from jumpserver.models.auth import (
     Token,
     TokenRequest,
 )
-from jumpserver.services import BaseService, _from_dict
+from jumpserver.services import BaseService, from_dict
 from jumpserver.utils import format_path
+
+if TYPE_CHECKING:
+    from jumpserver.client import Response
+
+
 
 __all__ = ["AuthService"]
 
-
 class AuthService(BaseService):
     """Service for /api/v1/authentication/ endpoints."""
-
-    def create_token(self, req: TokenRequest):
+    def create_token(self, req: TokenRequest) -> tuple[Optional[Token], Response]:
         data, resp = self._client.post("/api/v1/authentication/tokens/", req)
-        return _from_dict(Token, data) if data else None, resp
+        return from_dict(Token, data) if data else None, resp
 
     def confirm_login_status(self, ticket_id: str):
         data, resp = self._client.get(
@@ -33,13 +39,13 @@ class AuthService(BaseService):
         )
         return data or {}, resp
 
-    def create_connection_token(self, req: ConnectionTokenRequest):
+    def create_connection_token(self, req: ConnectionTokenRequest) -> tuple[Optional[ConnectionToken], Response]:
         data, resp = self._client.post("/api/v1/authentication/connection-token/", req)
-        return _from_dict(ConnectionToken, data) if data else None, resp
+        return from_dict(ConnectionToken, data) if data else None, resp
 
-    def create_super_connection_token(self, req: ConnectionTokenRequest):
+    def create_super_connection_token(self, req: ConnectionTokenRequest) -> tuple[Optional[ConnectionToken], Response]:
         data, resp = self._client.post("/api/v1/authentication/super-connection-token/", req)
-        return _from_dict(ConnectionToken, data) if data else None, resp
+        return from_dict(ConnectionToken, data) if data else None, resp
 
     def get_super_connection_token_secret(self, token_id: str):
         body = {"id": token_id, "expire_now": False}

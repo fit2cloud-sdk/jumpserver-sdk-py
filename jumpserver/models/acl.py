@@ -1,7 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
+
+__all__ = [
+    "Role", "Label", "LabelRequest",
+    "CommandFilter", "CommandFilterRequest",
+    "CommandGroup", "CommandGroupRequest",
+    "LoginACL",
+]
 
 
 @dataclass
@@ -59,13 +66,30 @@ class CommandFilter:
 
 @dataclass
 class CommandFilterRequest:
+    """Request payload for creating/updating a command filter.
+
+    Field formats (based on real API responses)::
+
+        users/assets/user_groups/nodes::
+            {"type": "all"}
+            {"type": "ids", "ids": ["<uuid>", ...]}
+            {"type": "attrs", "attrs": [{"name": "...", "match": "...", "value": ...}]}
+
+        accounts:           ["@ALL"]  or  ["@SPEC", "<username>", ...]
+        command_groups:     ["<uuid>", ...]
+        reviewers:          ["<uuid>", ...]
+
+        action: one of "reject", "accept", "review", "warning", "notify_and_warn"
+    """
+
     name: str = ""
-    command_groups: Any = None
-    accounts: Any = None
+    command_groups: list[str] = field(default_factory=list)
+    accounts: list[str] = field(default_factory=list)
     users: Any = None
     user_groups: Any = None
     assets: Any = None
     nodes: Any = None
+    reviewers: list[str] = field(default_factory=list)
     action: str = "reject"
     is_active: bool = True
     priority: int = 50

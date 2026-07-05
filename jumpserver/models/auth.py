@@ -12,6 +12,13 @@ class TokenRequest:
     mfa_code: str = ""
 
 
+__all__ = [
+    "Token", "TokenRequest",
+    "ConnectionToken", "ConnectionTokenRequest",
+    "SSOLoginRequest",
+]
+
+
 @dataclass
 class Token:
     token: str = ""

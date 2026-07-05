@@ -10,13 +10,14 @@ Python SDK for the [JumpServer](https://www.jumpserver.org/) REST API, compatibl
 ## Features
 
 - **v4 Support** — Targets JumpServer v4.x
-- **26+ Service Modules** — Full CRUD: Users, Assets, Accounts, Permissions, Organizations, Tickets, Self-service, Ops, and more
+- **Full CRUD Services** — Users, Assets, Accounts, Permissions, Organizations, Tickets, Self-service, Ops, and more
 - **Categorized Assets** — Hosts, Network Devices, Databases, Web, Cloud, Custom
 - **Multiple Auth Methods** — AccessKey (HMAC-SHA256), Password (Bearer Token), Private Token
 - **Password Auth with Token Caching** — Exchanges username/password for a Bearer Token on first request, caches it, and auto-refreshes 5 minutes before expiry; auto-retries on 401
 - **Organization Scoping** — `with_org(id)` switches organization context
-- **Pagination** — `limit` / `offset` pagination parameters
+- **Pagination** — `limit` / `offset` pagination parameters, `limit` defaults to `10` to prevent fetching all data
 - **Smart Retry** — Exponential backoff with jitter, retries only transient errors (408/429/5xx)
+- **Rich Platform Models** — PlatformProtocol with secret_types, port_from_addr, setting, etc.
 - **Type Safety** — Full dataclass models with IDE autocompletion
 
 ## Requirements
@@ -146,7 +147,7 @@ except APIError as e:
 | Web | `client.webs` | list / get / create / update / delete | Web asset CRUD |
 | Cloud | `client.clouds` | list / get / create / update / delete | Cloud asset CRUD |
 | Custom | `client.customs` | list / get / create / update / delete | Custom asset CRUD |
-| Nodes | `client.nodes` | list / get / create / delete / create_child / get_children | Asset tree node CRUD + children |
+| Nodes | `client.nodes` | list / get / create / delete / create_child / get_children / get_tree | Asset tree node CRUD + children + tree list |
 | Platforms | `client.platforms` | list / get | Platform template query |
 | Zones | `client.zones` | list / get / create / update / delete | Zone CRUD |
 | Gateways | `client.gateways` | list / get / create / update / delete | Gateway CRUD |
@@ -168,14 +169,24 @@ except APIError as e:
 | Ops | `client.ops` | run_job / get_job_result | Ops job execution (/api/v1/ops/jobs/) |
 | Xpack | `client.xpack` | license | License info |
 
+### Public Utility
+
+| Function | Module | Description |
+|----------|--------|-------------|
+| `from_dict` | `jumpserver` | Convert a JSON dict to a typed dataclass instance (camelCase ↔ snake_case) |
+| `format_path` | `jumpserver.utils` | Format URL path templates |
+| `map_error` | `jumpserver.errors` | Map HTTP status code to exception |
+| `is_not_found`, `is_unauthorized`, `is_forbidden`, `is_rate_limited` | `jumpserver.errors` | Error type helpers |
+
+
 ## Package Structure
 
 ```
 jumpserver/
-├── models/                   # Response & request models (dataclass)
+├── models/                   # Response & request models (dataclass) — each file exports __all__
 │   ├── user.py               #   User, UserRequest, Group, GroupRequest
 │   ├── asset.py              #   Asset, AssetRequest
-│   ├── asset_extras.py       #   Node, Platform, Zone, Gateway
+│   ├── asset_extras.py       #   Node, Platform, PlatformProtocol, Zone, Gateway
 │   ├── account.py            #   Account, AccountTemplate, ChangeSecret
 │   ├── permission.py         #   AssetPermission, SelfAsset
 │   ├── org.py                #   Organization
@@ -207,8 +218,10 @@ jumpserver/
 │   ├── BearerTokenAuth       #   Bearer Token
 │   └── PrivateTokenAuth      #   Private Token
 ├── client.py                 # Client main entry + Response
+├── py.typed                  # PEP 561 marker (distributes type info)
 ├── errors.py                 # APIError, NotFoundError, UnauthorizedError ...
 └── utils/                    # Utility functions
+    └── __init__.py           #   format_path
 ```
 
 ## Testing
@@ -278,7 +291,7 @@ pip install -e ".[dev]"
 pytest
 
 # Lint & type check
-ruff check .
+ruff check jumpserver/ tests/
 mypy jumpserver/
 ```
 

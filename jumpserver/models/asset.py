@@ -5,6 +5,11 @@ from typing import Any, Optional
 
 from . import IDName, LabelValue, NamePort, PlatformMini
 
+__all__ = [
+    "AssetWebScript", "AssetSpecInfo",
+    "Asset", "AssetRequest",
+]
+
 
 @dataclass
 class AssetWebScript:

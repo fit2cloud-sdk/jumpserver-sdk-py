@@ -1,7 +1,7 @@
 """XPack (enterprise) service."""
 
 from jumpserver.models.extra import License
-from jumpserver.services import BaseService, _from_dict
+from jumpserver.services import BaseService, from_dict
 
 __all__ = ["XpackService"]
 
@@ -11,4 +11,4 @@ class XpackService(BaseService):
 
     def license(self):
         data, resp = self._client.get("/api/v1/xpack/license/detail")
-        return _from_dict(License, data) if data else None, resp
+        return from_dict(License, data) if data else None, resp

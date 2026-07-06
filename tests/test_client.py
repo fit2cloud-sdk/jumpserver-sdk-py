@@ -347,7 +347,7 @@ class TestIntegrationAssets:
         assert isinstance(platforms, list)
 
     def test_list_node_tree(self, client: Client):
-        nodes, resp = client.nodes.get_tree()
+        nodes, resp = client.nodes.children_tree()
         assert resp.status_code == 200
         assert isinstance(nodes, list)
 

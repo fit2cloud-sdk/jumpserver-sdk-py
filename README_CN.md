@@ -12,7 +12,7 @@
 - **v4 支持** — SDK 面向 JumpServer v4.x
 - **完整 CRUD 服务** — 用户、资产、账号、权限、组织、工单、自服务、运维任务等
 - **分类资产** — 主机、网络设备、数据库、Web、云、自定义
-- **多种认证方式** — AccessKey (HMAC-SHA256)、密码认证 (Bearer Token)、Private Token
+- **多种认证方式** — AccessKey (HMAC-SHA256)、密码认证 (Bearer Token 自动缓存)、Private Token、Bearer Token、自定义 Authenticator
 - **密码认证自动缓存** — 首次请求通过用户名密码换取 Bearer Token，自动缓存并根据过期时间提前 5 分钟刷新，401 时自动重新获取
 - **组织切换** — `with_org(id)` 切换组织上下文
 - **自动分页** — 支持 `limit` / `offset` 分页参数，`limit` 默认 `10` 避免全量拉取
@@ -99,11 +99,25 @@ client = Client(
     password="password",
 )
 
-# Private Token（静态）
+# Bearer Token（静态）
+client = Client(
+    base_url="https://jumpserver.example.com",
+    bearer_token="your-bearer-token",
+)
+
+# Private Token（静态，Authorization: Token <token>）
 client = Client(
     base_url="https://jumpserver.example.com",
     token="your-private-token",
 )
+
+# 自定义 Authenticator
+from jumpserver.auth import Authenticator
+from requests import PreparedRequest
+
+class MyAuth(Authenticator):
+    def __call__(self, request: PreparedRequest) -> None:
+        request.headers["X-Custom-Auth"] = "my-secret"
 ```
 
 ### 密码认证流程
@@ -139,7 +153,7 @@ except APIError as e:
 | 服务 | 客户端字段 | 方法 | 说明 |
 |------|-----------|------|------|
 | 用户 | `client.users` | list / get / profile / create / update / replace / delete / invite | 用户 CRUD + 个人信息 |
-| 用户组 | `client.user_groups` | list / get / create / update / delete | 用户组 CRUD |
+| 用户组 | `client.user_groups` | list / get / create / update / delete / bind_users / list_users | 用户组 CRUD + 成员管理 |
 | 角色 | `client.roles` | list(scope) / get(scope) | 组织/系统角色查询 |
 | 资产 | `client.assets` | list / get / delete / perm_users | 通用资产操作 |
 | 主机 | `client.hosts` | list / get / create / update / delete | 主机 CRUD |
@@ -148,15 +162,15 @@ except APIError as e:
 | Web | `client.webs` | list / get / create / update / delete | Web 资产 CRUD |
 | 云资产 | `client.clouds` | list / get / create / update / delete | 云资产 CRUD |
 | 自定义 | `client.customs` | list / get / create / update / delete | 自定义资产 CRUD |
-| 节点 | `client.nodes` | list / get / create / delete / create_child / get_children / get_tree | 资产树节点 CRUD + 子节点 + 树列表 |
+| 节点 | `client.nodes` | list / get / create / delete / create_child / get_children / children_tree | 资产树节点 CRUD + 子节点 + 树列表 |
 | 平台 | `client.platforms` | list / get | 平台模板查询 |
 | 区域 | `client.zones` | list / get / create / update / delete | 区域 CRUD |
 | 网关 | `client.gateways` | list / get / create / update / delete | 网关 CRUD |
 | 标签 | `client.labels` | list / get / create / update / delete | 标签 CRUD |
 | 账号 | `client.accounts` | list / get / create / update / delete / get_secret / create_bulk / verify | 账号 CRUD + 密码查看 + 批量创建 |
 | 账号模板 | `client.account_templates` | list / get / create / update / delete | 模板 CRUD |
-| 改密 | `client.change_secrets` | list / get / create / update / delete | 改密自动化 CRUD |
-| 账号备份 | `client.account_backups` | list / get / create / update / delete | 备份计划 CRUD |
+| 改密 | `client.change_secrets` | list / get / create / update / delete / execute | 改密自动化 CRUD + 执行 |
+| 账号备份 | `client.account_backups` | list / get / create / update / delete / execute | 备份计划 CRUD + 执行 |
 | 组织 | `client.organizations` | list / get / create / update / delete | 组织 CRUD |
 | 授权 | `client.permissions` | list / get / create / update / delete / add_users_relations / add_user_groups_relations / add_assets_relations / add_nodes_relations / get_self_asset_accounts | 资产授权 CRUD + 授权关系 + 自服务账号查询 |
 | 命令过滤 | `client.command_filters` | list / get / create / update / delete / list_groups / get_group / create_group / update_group / delete_group | 命令过滤器 + 命令组 CRUD |
@@ -166,7 +180,7 @@ except APIError as e:
 | 终端 | `client.terminal` | register / config / heartbeat / connect_methods / get_task | 终端注册、配置、心跳 |
 | 工单 | `client.tickets` | list / get / create / approve / reject / list_flows / update_flow | 工单 CRUD + 审批 + 流程 |
 | 设置 | `client.settings` | public / list | 系统设置查询 |
-| 自服务 | `client.self_service` | list_assets / get_asset | 自服务授权资产 |
+| 自服务 | `client.self` | list_assets / get_asset | 自服务授权资产（`client.self_service` 向后兼容） |
 | 运维 | `client.ops` | run_job / get_job_result | 运维任务执行（/api/v1/ops/jobs/） |
 | Xpack | `client.xpack` | license | 许可证信息 |
 

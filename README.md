@@ -12,7 +12,7 @@ Python SDK for the [JumpServer](https://www.jumpserver.org/) REST API, compatibl
 - **v4 Support** — Targets JumpServer v4.x
 - **Full CRUD Services** — Users, Assets, Accounts, Permissions, Organizations, Tickets, Self-service, Ops, and more
 - **Categorized Assets** — Hosts, Network Devices, Databases, Web, Cloud, Custom
-- **Multiple Auth Methods** — AccessKey (HMAC-SHA256), Password (Bearer Token), Private Token
+- **Multiple Auth Methods** — AccessKey (HMAC-SHA256), Password Auth (auto-refresh), Private Token, Bearer Token, custom Authenticator
 - **Password Auth with Token Caching** — Exchanges username/password for a Bearer Token on first request, caches it, and auto-refreshes 5 minutes before expiry; auto-retries on 401
 - **Organization Scoping** — `with_org(id)` switches organization context
 - **Pagination** — `limit` / `offset` pagination parameters, `limit` defaults to `10` to prevent fetching all data
@@ -98,11 +98,25 @@ client = Client(
     password="password",
 )
 
-# Private Token (static)
+# Bearer Token (static)
+client = Client(
+    base_url="https://jumpserver.example.com",
+    bearer_token="your-bearer-token",
+)
+
+# Private Token (static, Authorization: Token <token>)
 client = Client(
     base_url="https://jumpserver.example.com",
     token="your-private-token",
 )
+
+# Custom Authenticator
+from jumpserver.auth import Authenticator
+from requests import PreparedRequest
+
+class MyAuth(Authenticator):
+    def __call__(self, request: PreparedRequest) -> None:
+        request.headers["X-Custom-Auth"] = "my-secret"
 ```
 
 ### Password Auth Flow
@@ -138,7 +152,7 @@ except APIError as e:
 | Service | Client Field | Methods | Description |
 |---------|-------------|---------|-------------|
 | Users | `client.users` | list / get / profile / create / update / replace / delete / invite | User CRUD + profile |
-| User Groups | `client.user_groups` | list / get / create / update / delete | User group CRUD |
+| User Groups | `client.user_groups` | list / get / create / update / delete / bind_users / list_users | User group CRUD + member management |
 | Roles | `client.roles` | list(scope) / get(scope) | Org/system role query |
 | Assets | `client.assets` | list / get / delete / perm_users | Generic asset operations |
 | Hosts | `client.hosts` | list / get / create / update / delete | Host CRUD |
@@ -147,15 +161,15 @@ except APIError as e:
 | Web | `client.webs` | list / get / create / update / delete | Web asset CRUD |
 | Cloud | `client.clouds` | list / get / create / update / delete | Cloud asset CRUD |
 | Custom | `client.customs` | list / get / create / update / delete | Custom asset CRUD |
-| Nodes | `client.nodes` | list / get / create / delete / create_child / get_children / get_tree | Asset tree node CRUD + children + tree list |
+| Nodes | `client.nodes` | list / get / create / delete / create_child / get_children / children_tree | Asset tree node CRUD + children + tree list |
 | Platforms | `client.platforms` | list / get | Platform template query |
 | Zones | `client.zones` | list / get / create / update / delete | Zone CRUD |
 | Gateways | `client.gateways` | list / get / create / update / delete | Gateway CRUD |
 | Labels | `client.labels` | list / get / create / update / delete | Label CRUD |
 | Accounts | `client.accounts` | list / get / create / update / delete / get_secret / create_bulk / verify | Account CRUD + secret view + bulk create |
 | Account Templates | `client.account_templates` | list / get / create / update / delete | Template CRUD |
-| Change Secret | `client.change_secrets` | list / get / create / update / delete | Change-secret automation CRUD |
-| Account Backups | `client.account_backups` | list / get / create / update / delete | Backup plan CRUD |
+| Change Secret | `client.change_secrets` | list / get / create / update / delete / execute | Change-secret automation CRUD + execute |
+| Account Backups | `client.account_backups` | list / get / create / update / delete / execute | Backup plan CRUD + execute |
 | Organizations | `client.organizations` | list / get / create / update / delete | Organization CRUD |
 | Permissions | `client.permissions` | list / get / create / update / delete / add_users_relations / add_user_groups_relations / add_assets_relations / add_nodes_relations / get_self_asset_accounts | Asset permission CRUD + relations + self-service account query |
 | Command Filters | `client.command_filters` | list / get / create / update / delete / list_groups / get_group / create_group / update_group / delete_group | Command filter + command group CRUD |
@@ -165,7 +179,7 @@ except APIError as e:
 | Terminal | `client.terminal` | register / config / heartbeat / connect_methods / get_task | Terminal registration, config, heartbeat |
 | Tickets | `client.tickets` | list / get / create / approve / reject / list_flows / update_flow | Ticket CRUD + approval + workflow |
 | Settings | `client.settings` | public / list | System settings query |
-| Self Service | `client.self_service` | list_assets / get_asset | Self-service authorized assets |
+| Self | `client.self` | list_assets / get_asset | Self-service authorized assets (`client.self_service` backward compat) |
 | Ops | `client.ops` | run_job / get_job_result | Ops job execution (/api/v1/ops/jobs/) |
 | Xpack | `client.xpack` | license | License info |
 

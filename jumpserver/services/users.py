@@ -47,6 +47,46 @@ class UsersService(BaseService):
     def delete(self, id: str) -> Response:
         return self._delete(id)
 
+    def bind_users(self, id: str, user_ids: list[str]) -> Response:
+        """Bind users to a user group."""
+        relations = [{"user": uid, "usergroup": id} for uid in user_ids]
+        _, resp = self._client.post("/api/v1/users/users-groups-relations/", relations)
+        return resp
+
+    def list_users(
+        self, id: str, limit: int = 100, offset: Optional[int] = None
+    ) -> tuple[list[User], Response]:
+        """List users belonging to a user group."""
+        params: dict[str, Any] = {"group_id": id}
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
+        data, resp = self._client.get("/api/v1/users/users/", params=params)
+        results = (data or {}).get("results", []) if isinstance(data, dict) else (data or [])
+        items = [from_dict(User, item) for item in results]
+        return items, resp
+
+    def bind_users(self, id: str, user_ids: list[str]) -> Response:
+        """Bind users to a user group."""
+        relations = [{"user": uid, "usergroup": id} for uid in user_ids]
+        _, resp = self._client.post("/api/v1/users/users-groups-relations/", relations)
+        return resp
+
+    def list_users(
+        self, id: str, limit: int = 100, offset: Optional[int] = None
+    ) -> tuple[list[User], Response]:
+        """List users belonging to a user group."""
+        params: dict[str, Any] = {"group_id": id}
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
+        data, resp = self._client.get("/api/v1/users/users/", params=params)
+        results = (data or {}).get("results", []) if isinstance(data, dict) else (data or [])
+        items = [from_dict(User, item) for item in results]
+        return items, resp
+
     def invite(self, user_ids: list[str], org_roles: list[str]) -> Response:
         body = {"users": user_ids, "org_roles": org_roles}
         _, resp = self._client.post("/api/v1/users/users/invite/", body)
@@ -91,3 +131,23 @@ class GroupsService(BaseService):
 
     def delete(self, id: str) -> Response:
         return self._delete(id)
+
+    def bind_users(self, id: str, user_ids: list[str]) -> Response:
+        """Bind users to a user group."""
+        relations = [{"user": uid, "usergroup": id} for uid in user_ids]
+        _, resp = self._client.post("/api/v1/users/users-groups-relations/", relations)
+        return resp
+
+    def list_users(
+        self, id: str, limit: int = 100, offset: Optional[int] = None
+    ) -> tuple[list[User], Response]:
+        """List users belonging to a user group."""
+        params: dict[str, Any] = {"group_id": id}
+        if limit is not None:
+            params["limit"] = limit
+        if offset is not None:
+            params["offset"] = offset
+        data, resp = self._client.get("/api/v1/users/users/", params=params)
+        results = (data or {}).get("results", []) if isinstance(data, dict) else (data or [])
+        items = [from_dict(User, item) for item in results]
+        return items, resp

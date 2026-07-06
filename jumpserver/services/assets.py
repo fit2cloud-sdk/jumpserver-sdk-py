@@ -126,7 +126,7 @@ class NodesService(BaseService):
         ]
         return items, resp
 
-    def get_tree(
+    def children_tree(
         self, key: Optional[str] = None
     ) -> tuple[list[NodeTreeItem], Response]:
         """Fetch the node tree, optionally scoped to a node *key*.

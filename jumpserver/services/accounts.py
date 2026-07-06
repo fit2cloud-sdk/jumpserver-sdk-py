@@ -113,6 +113,13 @@ class ChangeSecretService(BaseService):
     def delete(self, id: str) -> Response:
         return self._delete(id)
 
+    def execute(self, id: str) -> Response:
+        """Execute the change-secret automation immediately."""
+        _, resp = self._client.post(
+            format_path("/api/v1/accounts/change-secret-automations/%s/execute/", id)
+        )
+        return resp
+
 
 class BackupService(BaseService):
     """CRUD for /api/v1/accounts/account-backup-plans/."""
@@ -134,3 +141,4 @@ class BackupService(BaseService):
 
     def delete(self, id: str) -> Response:
         return self._delete(id)
+

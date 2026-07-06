@@ -69,7 +69,8 @@ class Client:
         access_secret: Access Key Secret for HMAC-SHA256 auth.
         username: Username for password-based auth.
         password: Password for password-based auth.
-        token: Private token or Bearer token.
+        token: Private Token (Authorization: Token <token>).
+        bearer_token: Bearer Token (Authorization: Bearer <token>).
         org_id: Default organization ID (default: global org).
         timeout: Request timeout in seconds (default: 30).
         max_retries: Max retries on transient errors (default: 3).
@@ -86,6 +87,7 @@ class Client:
         username: Optional[str] = None,
         password: Optional[str] = None,
         token: Optional[str] = None,
+        bearer_token: Optional[str] = None,
         org_id: str = JMS_GLOBAL_ORG,
         timeout: int = 30,
         max_retries: int = 3,
@@ -105,7 +107,7 @@ class Client:
         self._session.verify = verify_ssl
 
         self._auth: Optional[authmod.Authenticator] = self._build_auth(
-            access_key, access_secret, username, password, token
+            access_key, access_secret, username, password, token, bearer_token,
         )
         self._timeout = timeout
         self._max_retries = max_retries
@@ -128,6 +130,7 @@ class Client:
         username: Optional[str] = None,
         password: Optional[str] = None,
         token: Optional[str] = None,
+        bearer_token: Optional[str] = None,
     ) -> Optional[authmod.Authenticator]:
         if access_key and access_secret:
             return authmod.SignatureAuth(access_key, access_secret)
@@ -140,6 +143,8 @@ class Client:
             )
         if token:
             return authmod.PrivateTokenAuth(token)
+        if bearer_token:
+            return authmod.BearerTokenAuth(bearer_token)
         return None
 
     def _init_services(self) -> None:
@@ -194,7 +199,9 @@ class Client:
         self.account_backups = BackupService(self)
         self.organizations = OrgsService(self)
         self.permissions = PermsService(self)
-        self.self_service = SelfService(self)
+        self.self_svc = SelfService(self)
+        self.self = self.self_svc
+        self.self_service = self.self_svc  # backward compat alias
         self.command_filters = CommandFiltersService(self)
         self.login_acls = LoginACLsService(self)
         self.audits = AuditsService(self)
